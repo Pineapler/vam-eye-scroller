@@ -11,29 +11,34 @@ using UnityEngine;
 using Object = UnityEngine.Object;
 
 namespace Pineapler.EyeScroller {
+/// <summary>
+/// VamEyeScroller Version 0.1.0
+/// By Pineapler
+/// Stylized eyes that don't give you nightmares
+/// Source: https://github.com/pineaplers/vam-eye-scroller
+/// </summary>
     public class VamEyeScroller : MVRScript {
-
-        private GameObject _cube;
 
         // Format asset bundles as:
         // ## IMPORTANT
         //  eyes.prefab
         //  |   eye.l
         //  |   eye.r
-        //
-        // ## Probably not important for now
-        //  eyeMaterial
-        //  eyeTexture
-        //  eyeModel(s)
 
         private static readonly string _fileExt = "assetbundle";
         private string _lastBrowseDir = @"Custom\Assets\";
         private bool _isValidSetup = true;
 
         private JSONStorableBool _activeToggle;
+
+        private JSONStorableBool _eyeMirror;
         private JSONStorableFloat _uPerRotation;
         private JSONStorableFloat _vPerRotation;
         private JSONStorableFloat _uniformTexScale;
+
+        private Vector2 _uvsPerRotation;
+        private float _uniformTexScaleF;
+
         private JSONStorableUrl _eyePresetUrl;
         private EyesObject _parsedEyes;
 
@@ -47,7 +52,11 @@ namespace Pineapler.EyeScroller {
         private UIDynamicToggle _validToggleVis;
         private UIDynamicTextField _eyeBundleInfo;
 
+        private Color _bgDisabled = new Color(0.7f, 0.7f, 0.7f, 1);
+        private Color _bgValid = new Color(0.4f, 0.7f, 0.4f, 1);
+        private Color _bgInvalid = new Color(0.7f, 0.4f, 0.4f, 1);
 
+// ----------------------------------------------------------------------------------
         public override void Init() {
             try {
                 if (containingAtom?.type != "Person") {
@@ -67,24 +76,30 @@ namespace Pineapler.EyeScroller {
             }
         }
 
+// ----------------------------------------------------------------------------------
         private void InitCustomUI() {
                 _activeToggle = new JSONStorableBool("Active", false, OnSetActive);
-                _uPerRotation = new JSONStorableFloat("U values per rotation", 1f, -2f, 2f, false);
-                _vPerRotation = new JSONStorableFloat("V values per rotation", 1f, -2f, 2f, false);
-                _uniformTexScale = new JSONStorableFloat("Texture scale", 1f, 0.0001f, 10f);
+                _eyeMirror = new JSONStorableBool("Mirror one eye", true);
+                _uPerRotation = new JSONStorableFloat("U values per revolution", 1f, val => _uvsPerRotation = new Vector2(val, _vPerRotation.val), -2f, 2f, false);
+                _vPerRotation = new JSONStorableFloat("V values per revolution", 1f, val => _uvsPerRotation = new Vector2(_uPerRotation.val, val),-2f, 2f, false);
+                _uniformTexScale = new JSONStorableFloat("Texture scale", 1f, val => _uniformTexScaleF = val, 0.0001f, 10f);
                 _eyePresetUrl = new JSONStorableUrl("Eye Atom Preset", string.Empty);
 
                 RegisterBool(_activeToggle);
+                RegisterBool(_eyeMirror);
                 RegisterFloat(_uPerRotation);
                 RegisterFloat(_vPerRotation);
                 RegisterFloat(_uniformTexScale);
                 RegisterUrl(_eyePresetUrl);
 
+                // These get read very frequently, unwrap them from JSON to avoid passing around objects
+                _uvsPerRotation = new Vector2(_uPerRotation.val, _vPerRotation.val);
+                _uniformTexScaleF = _uniformTexScale.val;
+
                 // You can use Create* methods to add a control in the plugin's custom UI
                 CreateToggle(_activeToggle);
                 _validToggleVis = CreateToggle(new JSONStorableBool("Valid setup", false), true);
                 _validToggleVis.toggle.interactable = false;
-                _validToggleVis.backgroundColor = new Color(0.7f, 0.7f, 0.7f, 1);
 
                 CreateSpacer();
                 UIDynamicButton eyeLoader = CreateButton("Select Eye AssetBundle");
@@ -96,45 +111,14 @@ namespace Pineapler.EyeScroller {
                 _eyeBundleInfo.height = 10f;
 
                 CreateSpacer();
+                CreateToggle(_eyeMirror);
                 CreateSlider(_uPerRotation);
                 CreateSlider(_vPerRotation);
                 CreateSlider(_uniformTexScale);
 
-                // --- Debugging buttons ---
-                CreateSpacer(true);
-
-                // UIDynamicButton printHeadPath = CreateButton("Print head transform path", true);
-                // printHeadPath.button.onClick.AddListener(() => {
-                //     int[] idxPath = GetParentToChildPath(_headObj.transform);
-                //     SuperController.LogMessage(
-                //         $"Head bone: {{{string.Join(", ", idxPath.Select(x => x.ToString()).ToArray())}}}");
-                // });
-
-                // UIDynamicButton printTree = CreateButton("Print transform tree", true);
-                // printTree.button.onClick.AddListener(() => {
-                //     DfsFallback("nameThatIsntGoingToExist", containingAtom.transform, true);
-                // });
-
-                UIDynamicButton createCube = CreateButton("Create Debug Cube", true);
-                createCube.button.onClick.AddListener(() => {
-                    if (_cube != null) return;
-                    _cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                    _cube.GetComponent<Collider>().enabled = false;
-                    _cube.transform.position = new Vector3(0, 1, 0);
-
-                });
-
-                UIDynamicButton destroyCube = CreateButton("Destroy Debug Cube", true);
-                destroyCube.button.onClick.AddListener(() => {
-                    if (_cube == null) return;
-                    DestroyImmediate(_cube);
-                });
-
         }
 
-
-
-
+// ----------------------------------------------------------------------------------
         private void ValidateSetup() {
             try {
                 _isValidSetup = true;
@@ -158,7 +142,7 @@ namespace Pineapler.EyeScroller {
             }
         }
 
-
+// ----------------------------------------------------------------------------------
         public void GetEyeAssetPath(string path) {
             if (string.IsNullOrEmpty(path)) {
                 return;
@@ -169,6 +153,7 @@ namespace Pineapler.EyeScroller {
             ValidateSetup();
         }
 
+// ----------------------------------------------------------------------------------
         private void LoadEyeAsset() {
             try {
                 Request request = new AssetLoader.AssetBundleFromFileRequest
@@ -180,7 +165,7 @@ namespace Pineapler.EyeScroller {
                 _isValidSetup = false;
             }
         }
-
+// ----------------------------------------------------------------------------------
         private void OnEyeBundleLoaded(Request request) {
             try {
                 string[] assetPaths = request.assetBundle.GetAllAssetNames();
@@ -199,7 +184,7 @@ namespace Pineapler.EyeScroller {
                     return;
                 }
 
-                _parsedEyes.instance.SetActive(_activeToggle.val);
+                OnSetActive(_activeToggle);
             }
             catch (Exception e) {
                 SuperController.LogError(e.Message);
@@ -207,24 +192,27 @@ namespace Pineapler.EyeScroller {
             }
         }
 
-
-
+// ----------------------------------------------------------------------------------
         private void OnSetActive(JSONStorableBool state) {
             _parsedEyes?.instance?.SetActive(state.val);
+            // TODO: Disable real eye materials from here
         }
 
-
+// ----------------------------------------------------------------------------------
         private void LateUpdate() {
             try {
                 _validToggleVis.toggle.isOn = _isValidSetup;
-                if (!_activeToggle.val || !_isValidSetup) {
+                if (!_activeToggle.val) {
+                    _validToggleVis.backgroundColor = _bgDisabled;
                     return;
                 }
-                if (_cube != null) {
-                    // _cube.transform.position = _headObj.transform.position;
-                    // _cube.transform.rotation = _headObj.transform.rotation;
-
+                if (!_isValidSetup) {
+                    _validToggleVis.backgroundColor = _bgInvalid;
+                    return;
                 }
+                _validToggleVis.backgroundColor = _bgValid;
+
+                ScrollUVs();
             }
             catch (Exception e){
                 SuperController.LogError("EyeScroller: " + e);
@@ -232,20 +220,56 @@ namespace Pineapler.EyeScroller {
             }
         }
 
-        private void OnDestroy() {
-            if (_cube != null) {
-                DestroyImmediate(_cube);
+
+
+// ----------------------------------------------------------------------------------
+
+        private readonly Vector2 POINT_FIVE = new Vector2(0.5f, 0.5f);
+
+        // TODO: Get head bone
+        // TODO: Get eye bones
+        // TODO: IMPORTANT: Replace null transforms in ScrollUV
+        private void ScrollUVs() {
+            ScrollUV(_parsedEyes.lMesh, null, _parsedEyes.lOriginalUVs, _parsedEyes.lCurrentUVs, false);
+            ScrollUV(_parsedEyes.rMesh, null, _parsedEyes.rOriginalUVs, _parsedEyes.rCurrentUVs, _eyeMirror.val);
+        }
+
+        private void ScrollUV(Mesh mesh, Transform referenceRot, Vector2[] originalUVs, Vector2[] currentUVs, bool mirror) {
+
+            // Vector3 refObjRotation = referenceRot.localRotation.eulerAngles;
+            Vector3 refObjRotation = Vector3.zero;
+            // Get angles in range [-180, 180]
+            float horizontalRot = Mathf.Repeat(refObjRotation.y + 180f, 360f) - 180f;
+            float verticalRot = Mathf.Repeat(refObjRotation.x + 180f, 360f) - 180f;
+
+            // Scale rotation-to-UV offset
+            Vector2 uvOffset = new Vector2(horizontalRot, verticalRot) / 180f * _uvsPerRotation;
+
+            for (int i = 0; i < currentUVs.Length; i++) {
+                Vector2 uv = originalUVs[i];
+                uv += uvOffset;
+                uv -= POINT_FIVE;
+                uv /= _uniformTexScaleF;
+                uv += POINT_FIVE;
+                currentUVs[i] = uv;
             }
 
+            mesh.uv = currentUVs;
+        }
+
+
+// ----------------------------------------------------------------------------------
+        private void OnDestroy() {
             if (_parsedEyes != null) {
                 DestroyImmediate(_parsedEyes.instance);
             }
         }
-
-
-
     }
 
+
+    // ################################################################
+    // ### Eyes Manager ###############################################
+    // ################################################################
 
     public class EyesObject {
         public bool isValidRig = true;
@@ -258,6 +282,7 @@ namespace Pineapler.EyeScroller {
         public Vector2[] lCurrentUVs;
         public Vector2[] rCurrentUVs;
 
+// ----------------------------------------------------------------------------------
         public EyesObject(Request request, string path) {
             root = request.assetBundle.LoadAsset<GameObject>(path).transform;
             if (!PopulateData(root)) {
@@ -267,6 +292,7 @@ namespace Pineapler.EyeScroller {
                                                $"Found object hierarchy: \n\n{Utils.ObjectHierarchyToString(root)}");
                 return;
             }
+            // TODO: set parent bone here
             instance = GameObject.Instantiate(root.gameObject);
             if (!PopulateData(instance.transform)) {
                 Utils.PrintErrorUsage($"Error deconstructing the eyes prefab after instantiating.\n" +
@@ -284,6 +310,7 @@ namespace Pineapler.EyeScroller {
 
         }
 
+// ----------------------------------------------------------------------------------
         private bool PopulateData(Transform root) {
             for (int i = root.childCount - 1; i >= 0;  i--) { // bottom up, this way we get references to the first .l and .r
                 Transform t = root.GetChild(i);
@@ -484,12 +511,15 @@ namespace Pineapler.EyeScroller {
     // ################################################################
     #region utils
     public class Utils {
+
+// ----------------------------------------------------------------------------------
         public static string ObjectHierarchyToString(Transform root) {
             StringBuilder builder = new StringBuilder();
             ObjectHierarchyToString(root, builder);
             return builder.ToString();
         }
 
+// ----------------------------------------------------------------------------------
         private static void ObjectHierarchyToString(Transform root, StringBuilder builder, int currentDepth = 0) {
 
             for (int i = 0; i < currentDepth; i++) {
@@ -504,6 +534,7 @@ namespace Pineapler.EyeScroller {
         }
 
 
+// ----------------------------------------------------------------------------------
         public static void PrintErrorUsage(string prefixLine = "") {
             string errorString = "EyeScroller: " + prefixLine + "\n" +
                                  @"Please make sure your AssetBundle contains a prefab with following elements:
