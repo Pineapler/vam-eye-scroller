@@ -4,12 +4,16 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using Battlehub.RTSaveLoad;
-using uFileBrowser;
+using Battlehub.RTCommon;
+using Request = MeshVR.AssetLoader.AssetBundleFromFileRequest;
+using MeshVR;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace Pineapler.EyeScroller {
     public class VamEyeScroller : MVRScript {
+
+        private GameObject _cube;
 
         // Format asset bundles as:
         // ## IMPORTANT
@@ -22,33 +26,27 @@ namespace Pineapler.EyeScroller {
         //  eyeTexture
         //  eyeModel(s)
 
-        private Material _replacementMat;
+        private static readonly string _fileExt = "assetbundle";
+        private string _lastBrowseDir = @"Custom\Assets\";
+        private bool _isValidSetup = true;
+
+        private JSONStorableBool _activeToggle;
         private JSONStorableFloat _uPerRotation;
         private JSONStorableFloat _vPerRotation;
         private JSONStorableFloat _uniformTexScale;
-        // private JSONStorableActionPresetFilePath _eyePresetUrl;
         private JSONStorableUrl _eyePresetUrl;
-        // private CustomUnityAssetLoader _cuaLoader;
+        private EyesObject _parsedEyes;
+
         private GameObject _headObj;
-        private GameObject _personMeshObj;
-        private SkinnedMeshRenderer _skinnedMesh;
-        private Dictionary<int, Material> _originalEyeMats = new Dictionary<int, Material>();
-        // private HashSet<string> _eyeMatMask = new HashSet<string> {
-        //     "Cornea (Instance)",
-        //     "EyeReflection (Instance)",
-        //     "Irises (Instance)",
-        //     "Lacrimals (Instance)",
-        //     "Pupils (Instance)",
-        //     "Sclera (Instance)",
-        //     "Tear (Instance)"
-        // };
+        private Transform _lLookReference;
+        private Transform _rLookReference;
+        private DAZCharacter _character;
+        private DAZCharacterSelector _selector;
+        private SkinHandler _skinHandler;
 
+        private UIDynamicToggle _validToggleVis;
+        private UIDynamicTextField _eyeBundleInfo;
 
-
-        private Dictionary<string, int[]> _indexPaths = new Dictionary<string, int[]>{
-            {"head", new [] { 0, 1, 0, 1, 0, 1, 0, 0, 0, 2, 0 }},
-            {"Genesis2Female.Shape", new []{ 0, 1, 0, 1, 0, 0 }}
-        };
 
         public override void Init() {
             try {
@@ -58,226 +56,258 @@ namespace Pineapler.EyeScroller {
                     return;
                 }
 
-                // Example storable; you can also create string, float and action JSON storables
+                InitCustomUI();
+
+                ValidateSetup();
+
+            }
+            catch (Exception e) {
+                SuperController.LogError("EyeScroller: Failed to initialize. " + e);
+                _isValidSetup = false;
+            }
+        }
+
+        private void InitCustomUI() {
+                _activeToggle = new JSONStorableBool("Active", false, OnSetActive);
                 _uPerRotation = new JSONStorableFloat("U values per rotation", 1f, -2f, 2f, false);
                 _vPerRotation = new JSONStorableFloat("V values per rotation", 1f, -2f, 2f, false);
                 _uniformTexScale = new JSONStorableFloat("Texture scale", 1f, 0.0001f, 10f);
-                _eyePresetUrl = new JSONStorableUrl("Eye Atom Preset", string.Empty, LoadEyeAsset);
+                _eyePresetUrl = new JSONStorableUrl("Eye Atom Preset", string.Empty);
 
-                // You can use Register* methods to make your storable triggerable, and save and restore the value with the scene
+                RegisterBool(_activeToggle);
                 RegisterFloat(_uPerRotation);
                 RegisterFloat(_vPerRotation);
                 RegisterFloat(_uniformTexScale);
                 RegisterUrl(_eyePresetUrl);
 
                 // You can use Create* methods to add a control in the plugin's custom UI
-                CreateButton("NOT IMPL. Select Eye ");
+                CreateToggle(_activeToggle);
+                _validToggleVis = CreateToggle(new JSONStorableBool("Valid setup", false), true);
+                _validToggleVis.toggle.interactable = false;
+                _validToggleVis.backgroundColor = new Color(0.7f, 0.7f, 0.7f, 1);
+
+                CreateSpacer();
+                UIDynamicButton eyeLoader = CreateButton("Select Eye AssetBundle");
+                eyeLoader.button.onClick.AddListener(() => {
+                    SuperController.singleton.NormalizeMediaPath(_lastBrowseDir);
+                    SuperController.singleton.GetMediaPathDialog(GetEyeAssetPath, _fileExt);
+                });
+                _eyeBundleInfo = CreateTextField(new JSONStorableString("Selected AssetBundle", ""));
+                _eyeBundleInfo.height = 10f;
+
+                CreateSpacer();
                 CreateSlider(_uPerRotation);
                 CreateSlider(_vPerRotation);
                 CreateSlider(_uniformTexScale);
 
-
-                _replacementMat = GenerateReplacementMat();
-
-
-                // --- Get GameObject references ---
-                _headObj = FindGameObjectInChildren("head");
-                _personMeshObj = FindGameObjectInChildren("Genesis2Female.Shape");
-                _skinnedMesh = _personMeshObj.GetComponent<SkinnedMeshRenderer>();
-                CollectEyeMats();
-                DisableEyeMats();
-
-
                 // --- Debugging buttons ---
                 CreateSpacer(true);
 
-                UIDynamicButton printHeadPath = CreateButton("Print head transform path", true);
-                printHeadPath.button.onClick.AddListener(() => {
-                    int[] idxPath = GetParentToChildPath(_headObj.transform);
-                    SuperController.LogMessage(
-                        $"Head bone: {{{string.Join(", ", idxPath.Select(x => x.ToString()).ToArray())}}}");
+                // UIDynamicButton printHeadPath = CreateButton("Print head transform path", true);
+                // printHeadPath.button.onClick.AddListener(() => {
+                //     int[] idxPath = GetParentToChildPath(_headObj.transform);
+                //     SuperController.LogMessage(
+                //         $"Head bone: {{{string.Join(", ", idxPath.Select(x => x.ToString()).ToArray())}}}");
+                // });
+
+                // UIDynamicButton printTree = CreateButton("Print transform tree", true);
+                // printTree.button.onClick.AddListener(() => {
+                //     DfsFallback("nameThatIsntGoingToExist", containingAtom.transform, true);
+                // });
+
+                UIDynamicButton createCube = CreateButton("Create Debug Cube", true);
+                createCube.button.onClick.AddListener(() => {
+                    if (_cube != null) return;
+                    _cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    _cube.GetComponent<Collider>().enabled = false;
+                    _cube.transform.position = new Vector3(0, 1, 0);
+
                 });
 
-                UIDynamicButton printShapePath = CreateButton("Print G2FShape path", true);
-                printShapePath.button.onClick.AddListener(() => {
-                    int[] idxPath = GetParentToChildPath(_personMeshObj.transform);
-                    SuperController.LogMessage(
-                        $"Person Mesh: {{{string.Join(", ", idxPath.Select(x => x.ToString()).ToArray())}}}");
+                UIDynamicButton destroyCube = CreateButton("Destroy Debug Cube", true);
+                destroyCube.button.onClick.AddListener(() => {
+                    if (_cube == null) return;
+                    DestroyImmediate(_cube);
                 });
 
-                UIDynamicButton printSkinMats = CreateButton("Print Skin Materials", true);
-                printSkinMats.button.onClick.AddListener(() => {
-                    foreach (Material m in _skinnedMesh.materials) {
-                        SuperController.LogMessage(m.name);
-                    }
-                });
+        }
 
+
+
+
+        private void ValidateSetup() {
+            try {
+                _isValidSetup = true;
+
+                if (_parsedEyes?.instance != null) {
+                    GameObject.Destroy(_parsedEyes.instance);
+                }
+
+                if (string.IsNullOrEmpty(_eyePresetUrl.val)) {
+                    _isValidSetup = false;
+                    return;
+                }
+
+                // Display the currently selected file
+                _eyeBundleInfo.text = _eyePresetUrl.val.Substring(_eyePresetUrl.val.LastIndexOfAny(new char[] { '/', '\\' }) + 1);
+                LoadEyeAsset();
             }
             catch (Exception e) {
-                SuperController.LogError("EyeScroller: Failed to initialize. " + e);
-            }
-        }
-
-        /// <summary>
-        /// Search for a named GameObject in the children of the containingAtom.
-        /// </summary>
-        /// <param name="targetName"></param>
-        /// <returns>a reference to the target GameObject</returns>
-        /// <exception cref="Exception">No object with the specified name is found</exception>
-        private GameObject FindGameObjectInChildren(string targetName) {
-            GameObject target = DirectSearch(_indexPaths[targetName]);
-            if (target == null || !target.name.Equals(targetName)) {
-                target = DfsFallback(targetName, containingAtom.transform, true);
-            }
-
-            if (target == null) {
-                // Script is useless if it's not on a player, throw exception and stop the script
-                throw new Exception($"EyeScroller: Could not find \"{targetName}\". Please make sure this script is applied to a Person atom.");
-            }
-
-            return target;
-        }
-
-
-        /// <summary>
-        /// Navigate the transform tree from the attached transform.
-        /// </summary>
-        /// <param name="treePath"></param>
-        /// <returns></returns>
-        private GameObject DirectSearch(int[] treePath) {
-            try {
-                Transform current = containingAtom.gameObject.transform;
-                foreach (int idx in treePath) {
-                    current = current.GetChild(idx);
-                }
-
-                return current.gameObject;
-            }
-            catch (Exception e){
                 SuperController.LogError(e.Message);
-                return null;
+                _isValidSetup = false;
             }
         }
 
 
-        /// <summary>
-        /// Fallback Depth-first search of the character's GameObject, just in case the object structure isn't constant
-        /// </summary>
-        /// <param name="targetName">Name of the gameObject to find</param>
-        /// <param name="root">Root node of the tree we are to search</param>
-        /// <param name="currentDepth">Depth of the tree at the point of the function call</param>
-        /// <param name="printStructure">Write the tree structure to the message log</param>
-        /// <returns></returns>
-        private GameObject DfsFallback(string targetName, Transform root, bool printStructure = false, int currentDepth = 0) {
-            string tabStr = "";
-            if (printStructure) {
-                for (int i = 0; i < currentDepth; i++) {
-                    tabStr += "|\t";
+        public void GetEyeAssetPath(string path) {
+            if (string.IsNullOrEmpty(path)) {
+                return;
+            }
+
+            _lastBrowseDir = path.Substring(0, path.LastIndexOfAny(new char[] { '/', '\\' })) + @"\";
+            _eyePresetUrl.val = path;
+            ValidateSetup();
+        }
+
+        private void LoadEyeAsset() {
+            try {
+                Request request = new AssetLoader.AssetBundleFromFileRequest
+                    { path = _eyePresetUrl.val, callback = OnEyeBundleLoaded };
+                AssetLoader.QueueLoadAssetBundleFromFile(request);
+            }
+            catch (Exception e) {
+                SuperController.LogError(e.Message);
+                _isValidSetup = false;
+            }
+        }
+
+        private void OnEyeBundleLoaded(Request request) {
+            try {
+                string[] assetPaths = request.assetBundle.GetAllAssetNames();
+
+                string firstPrefabPath = assetPaths.FirstOrDefault(s => s.EndsWith(".prefab"));
+
+                if (firstPrefabPath == null) {
+                    Utils.PrintErrorUsage("No prefab was found in the specified AssetBundle.");
+                    _isValidSetup = false;
+                    return;
                 }
-                SuperController.LogMessage(tabStr + root.name);
-            }
 
-            if (root.name.Equals(targetName)) {
-                return root.gameObject;
-            }
-
-
-            foreach (Transform child in root) {
-                GameObject foundObject = DfsFallback(targetName, child, printStructure, currentDepth+1);
-                if (foundObject != null) return foundObject;
-            }
-
-            return null;
-        }
-
-
-        /// <summary>
-        /// Reconstruct the transform tree path to get to a child transform
-        /// </summary>
-        /// <param name="child"></param>
-        /// <returns></returns>
-        private int[] GetParentToChildPath(Transform child) {
-            List<int> reverseList = new List<int>(16);
-            while (child != containingAtom.transform) {
-                reverseList.Add(child.GetSiblingIndex());
-                child = child.parent;
-            }
-
-            reverseList.Reverse();
-            return reverseList.ToArray();
-        }
-
-
-        private Material GenerateReplacementMat() {
-            Material replacementMat = new Material(Shader.Find("Unlit/Transparent Cutout"));
-            return replacementMat;
-        }
-
-
-        private void CollectEyeMats() {
-            _originalEyeMats.Clear();
-            for(int i = 0; i  < _skinnedMesh.materials.Length; i++){
-                Material m = _skinnedMesh.materials[i];
-                if (_eyeMatMask.Contains(m.name)) {
-                    _originalEyeMats.Add(i, m);
+                _parsedEyes = new EyesObject(request, firstPrefabPath);
+                if (!_parsedEyes.isValidRig) {
+                    _isValidSetup = false;
+                    return;
                 }
+
+                _parsedEyes.instance.SetActive(_activeToggle.val);
+            }
+            catch (Exception e) {
+                SuperController.LogError(e.Message);
+                _isValidSetup = false;
             }
         }
 
 
-        public void LoadEyeAsset(string path) { }
 
-
-        public void UpdateEyeMats() {
-            EnableEyeMats();
-            // TODO: Update material mask from json
-            // UpdateMatMask();
-            DisableEyeMats();
+        private void OnSetActive(JSONStorableBool state) {
+            _parsedEyes?.instance?.SetActive(state.val);
         }
 
-
-        private void EnableEyeMats() {
-            Material[] tempMats = _skinnedMesh.materials; // Can't set mats by index
-
-            foreach (KeyValuePair<int, Material> kv in _originalEyeMats) {
-                tempMats[kv.Key] = kv.Value;
-            }
-
-            _skinnedMesh.materials = tempMats;
-
-        }
-
-
-        private void DisableEyeMats() {
-            CollectEyeMats();
-
-            Material[] tempMats = _skinnedMesh.materials; // Can't set mats by index
-            foreach (KeyValuePair<int, Material> kv in _originalEyeMats) {
-                tempMats[kv.Key] = _replacementMat;
-            }
-
-            _skinnedMesh.materials = tempMats;
-        }
 
         private void LateUpdate() {
             try {
+                _validToggleVis.toggle.isOn = _isValidSetup;
+                if (!_activeToggle.val || !_isValidSetup) {
+                    return;
+                }
+                if (_cube != null) {
+                    // _cube.transform.position = _headObj.transform.position;
+                    // _cube.transform.rotation = _headObj.transform.rotation;
 
+                }
             }
             catch (Exception e){
                 SuperController.LogError("EyeScroller: " + e);
+                _isValidSetup = false;
             }
         }
 
         private void OnDestroy() {
-            EnableEyeMats();
+            if (_cube != null) {
+                DestroyImmediate(_cube);
+            }
+
+            if (_parsedEyes != null) {
+                DestroyImmediate(_parsedEyes.instance);
+            }
+        }
+
+
+
+    }
+
+
+    public class EyesObject {
+        public bool isValidRig = true;
+        public GameObject instance;
+        public Transform root;
+        public Mesh lMesh;
+        public Mesh rMesh;
+        public Vector2[] lOriginalUVs;
+        public Vector2[] rOriginalUVs;
+        public Vector2[] lCurrentUVs;
+        public Vector2[] rCurrentUVs;
+
+        public EyesObject(Request request, string path) {
+            root = request.assetBundle.LoadAsset<GameObject>(path).transform;
+            if (!PopulateData(root)) {
+                Utils.PrintErrorUsage($"Error deconstructing the eyes prefab before instantiating.\n" +
+                                               $"[eye.l found: {lMesh != null}]\n[eye.r found: {rMesh != null}]\n" +
+                                               $"[both meshes readable: {lMesh?.isReadable} {rMesh?.isReadable}]\n" +
+                                               $"Found object hierarchy: \n\n{Utils.ObjectHierarchyToString(root)}");
+                return;
+            }
+            instance = GameObject.Instantiate(root.gameObject);
+            if (!PopulateData(instance.transform)) {
+                Utils.PrintErrorUsage($"Error deconstructing the eyes prefab after instantiating.\n" +
+                                               $"[eye.l found: {lMesh != null}]\n[eye.r found: {rMesh != null}]\n" +
+                                               $"[both meshes readable: {lMesh?.isReadable} {rMesh?.isReadable}]\n" +
+                                               $"Found object hierarchy: \n\n{Utils.ObjectHierarchyToString(root)}");
+                GameObject.DestroyImmediate(instance);
+                return;
+            }
+
+            lOriginalUVs = (Vector2[]) lMesh.uv.Clone();
+            rOriginalUVs = (Vector2[]) rMesh.uv.Clone();
+            lCurrentUVs = lMesh.uv;
+            rCurrentUVs = rMesh.uv;
+
+        }
+
+        private bool PopulateData(Transform root) {
+            for (int i = root.childCount - 1; i >= 0;  i--) { // bottom up, this way we get references to the first .l and .r
+                Transform t = root.GetChild(i);
+                if (t.name.EndsWith(".l")) {
+                    lMesh = t.GetComponent<MeshFilter>().mesh;
+                } else if (t.name.EndsWith(".r")) {
+                    rMesh = t.GetComponent<MeshFilter>().mesh;
+                }
+            }
+            return lMesh != null && rMesh != null && lMesh.isReadable && rMesh.isReadable;
+        }
+
+        ~EyesObject(){
+            if (instance != null) {
+                GameObject.DestroyImmediate(instance);
+            }
         }
     }
 
 
     // ##############################################################################
-    // ###  The following code has been repurposed from acidbubbles' ImprovedPoV  ###
+    // ###  The following code has been repurposed from Acidbubbles' ImprovedPoV  ###
     // ##############################################################################
-
+#region Acidbubbles
     public static class HandlerConfigurationResult
     {
         public const int Success = 0;
@@ -447,4 +477,43 @@ namespace Pineapler.EyeScroller {
                 }
             }
         }
+    #endregion
+
+    // ################################################################
+    // ### Utils ######################################################
+    // ################################################################
+    #region utils
+    public class Utils {
+        public static string ObjectHierarchyToString(Transform root) {
+            StringBuilder builder = new StringBuilder();
+            ObjectHierarchyToString(root, builder);
+            return builder.ToString();
+        }
+
+        private static void ObjectHierarchyToString(Transform root, StringBuilder builder, int currentDepth = 0) {
+
+            for (int i = 0; i < currentDepth; i++) {
+                builder.Append("|\t");
+            }
+
+            builder.Append(root.name + "\n");
+
+            foreach (Transform child in root) {
+                ObjectHierarchyToString(child, builder, currentDepth+1);
+            }
+        }
+
+
+        public static void PrintErrorUsage(string prefixLine = "") {
+            string errorString = "EyeScroller: " + prefixLine + "\n" +
+                                 @"Please make sure your AssetBundle contains a prefab with following elements:
+<eyes>.prefab
+|   <eye>.l
+|   <eye>.r";
+
+            SuperController.LogError(errorString);
+        }
+
+    }
+    #endregion
 }

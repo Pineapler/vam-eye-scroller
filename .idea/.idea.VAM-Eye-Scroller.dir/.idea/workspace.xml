@@ -2,9 +2,10 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="7166a23e-1ff4-463c-98cf-e007aa84512a" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/VamEyeScroller - ADD ME.cslist" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/.idea.VAM-Eye-Scroller.dir/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.VAM-Eye-Scroller.dir/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Folder.DotSettings.user" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/VamEyeScroller.cs" beforeDir="false" afterPath="$PROJECT_DIR$/VamEyeScroller.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/VamEyeScroller.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/VamEyeScroller.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/VamEyeScroller.csproj" beforeDir="false" afterPath="$PROJECT_DIR$/VamEyeScroller.csproj" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -20,17 +21,23 @@
     </file-type-list>
   </component>
   <component name="HighlightingSettingsPerFile">
+    <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/72eed15d337842bdbd696ce1ead8c727546400/36/86f5a951/AssetBundleManager.cs" root0="SKIP_HIGHLIGHTING" />
     <setting file="file://$USER_HOME$/AppData/Local/Temp/Rar$DRa27768.21901/Custom/Scripts/NoStage3/UnityAssetVamifier.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/f626e8338bca4850bf8bd28d963292323400/f4/0266870f/AssetBundle.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/72eed15d337842bdbd696ce1ead8c727546400/7e/a8734813/JSONStorable.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/72eed15d337842bdbd696ce1ead8c727546400/8f/6b360bcf/AssetLoader.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/72eed15d337842bdbd696ce1ead8c727546400/49/b39b5480/DAZSkinV2.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/72eed15d337842bdbd696ce1ead8c727546400/be/8a5c4b0d/DAZCharacter.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/72eed15d337842bdbd696ce1ead8c727546400/06/e023c270/DAZCharacterSelector.cs" root0="SKIP_HIGHLIGHTING" />
     <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/72eed15d337842bdbd696ce1ead8c727546400/fb/a6e1cc1a/JSONStorableParam.cs" root0="SKIP_HIGHLIGHTING" />
-    <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/72eed15d337842bdbd696ce1ead8c727546400/18/a7f08090/CustomUnityAssetLoader.cs" root0="SKIP_HIGHLIGHTING" />
-    <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/72eed15d337842bdbd696ce1ead8c727546400/0f/6a44ab9c/JSONStorableBool.cs" root0="SKIP_HIGHLIGHTING" />
     <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/72eed15d337842bdbd696ce1ead8c727546400/9a/b93a5458/JSONStorableActionPresetFilePath.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/72eed15d337842bdbd696ce1ead8c727546400/64/613a8c9a/SuperController.cs" root0="SKIP_HIGHLIGHTING" />
     <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/72eed15d337842bdbd696ce1ead8c727546400/21/a3fd1796/CreateAssetBundles.cs" root0="SKIP_HIGHLIGHTING" />
     <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/72eed15d337842bdbd696ce1ead8c727546400/aa/74730211/JSONStorableUrl.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/72eed15d337842bdbd696ce1ead8c727546400/18/a7f08090/CustomUnityAssetLoader.cs" root0="SKIP_HIGHLIGHTING" />
     <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/72eed15d337842bdbd696ce1ead8c727546400/57/aaadcbd6/MVRScript.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/72eed15d337842bdbd696ce1ead8c727546400/0f/6a44ab9c/JSONStorableBool.cs" root0="SKIP_HIGHLIGHTING" />
     <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/72eed15d337842bdbd696ce1ead8c727546400/6c/b37c5aaa/JSONStorableFloat.cs" root0="SKIP_HIGHLIGHTING" />
-    <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/72eed15d337842bdbd696ce1ead8c727546400/7e/a8734813/JSONStorable.cs" root0="SKIP_HIGHLIGHTING" />
-    <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/72eed15d337842bdbd696ce1ead8c727546400/49/b39b5480/DAZSkinV2.cs" root0="SKIP_HIGHLIGHTING" />
   </component>
   <component name="MarkdownSettingsMigration">
     <option name="stateVersion" value="1" />
@@ -78,7 +85,8 @@
       <workItem from="1649908976068" duration="1211000" />
       <workItem from="1649910207662" duration="3156000" />
       <workItem from="1649983612552" duration="19185000" />
-      <workItem from="1650017231808" duration="13629000" />
+      <workItem from="1650017231808" duration="28232000" />
+      <workItem from="1650085793415" duration="13714000" />
     </task>
     <servers />
   </component>
