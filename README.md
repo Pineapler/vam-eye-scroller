@@ -1,46 +1,101 @@
-# Virt-A-Mate Plugin Template for VSCode
+# VamEyeScroller
 
-## What you will need
+The DAZ3D characters used by Virt-A-Mate have spherical eyes. The models are designed to rotate to look at things, and there are several material options to fine-tune the look of every part of the eye. However, in a lot of stylized models the character's eyes are too big and flat for this to work properly, and if you try it you will have nightmares for weeks. Artists use a technique called UV scrolling where the textures are scrolled along the eye model surface, giving the illusion of the character looking in a different direction.  
 
-- [Visual Studio Code](https://code.visualstudio.com/) to edit your plugins
-- [.NET Core SDK](https://dotnet.microsoft.com/download) to compile your code (optional)
-- [.NET Framework 3.5 Targeting Pack](https://stackoverflow.com/a/47621616/154480) (you might already have this)
-- [Virt-A-Mate](https://www.patreon.com/meshedvr/) to use your plugins
+So we have a problem. We can't have giant dinnerplate eyes sticking out of our waifu's skulls during sexytime, that just won't do. That's where VamEyeScroller comes in!
+Apply this plugin to your character and feed it an AssetBundle containing the original model's eye geometry and materials, and the plugin will handle the rest.
 
-## Get this template
 
-First of all, decide what your author name will be, and what your plugin name will be. From now on, replace `Author` and `MyPlugin` by your selected name. I suggest your keep those simple without any special characters.
+This plugin is used for replacing the spherical, transform-based eyes used by the DAZ G2F
+model with static UV-scroll-based eyes common in stylized models.
 
-- If you have a GitHub account (recommended), click on `Use this template` on the [vam-plugin-template](https://github.com/acidbubbles/vam-plugin-template). It will create your own copy. You can also [download](https://github.com/acidbubbles/vam-plugin-template/archive/master.zip) this repository.
-- Clone (or unzip) this repo under `(VaM install path)\Custom\Scripts\Author\MyPlugin`, replacing `Author` and `MyPlugin` by yours, so that the `MyPlugin.cs` is directly under the `MyPlugin` folder.
+## Why would I need this?
 
-You should now be able to open the project in vscode by using `File`, `Open Folder` and select the `MyPlugin` folder.
+Does your character ever look at you like this?
+![A scene of nightmares](img/01-example.png)
 
-## Adapt the template
+Well I have news for you! If your original character model came with UV-scrolling eyes before you ported it to VAM, you can use them!
 
-- Rename the `MyPlugin.cs` and `MyPlugin.csproj` to match your plugin name.
-- Replace in files (<kbd>ctrl</kbd> + <kbd>shift</kbd> + <kbd>h</kbd>) all occurences of `Author` and `MyPlugin` by yours.
-- In `meta.json`, fill in the description (keep `v0.0.0` if you plan on using GitHub Actions), credits, instructions and promotionalLink. You might also want to chage the `licenseType`, if you wish.
-- Replace the content of `README.md` by your own content.
-- Replace the author name in [LICENSE.md](LICENSE.md) file to put your own name (it's all right, you have my blessing!)
+# Walkthrough
 
-## About `MVRScript`
+The length of this document might look a bit daunting, but if you've made AssetBundles for VAM before you'll breeze through it.
 
-The plugin is really a Unity [MonoBehavior](https://docs.unity3d.com/ScriptReference/MonoBehaviour.html), which means you can use methods like `Update`, `FixedUpdate`, `OnEnable`, `OnDisable` and `OnDestroy`. `Init` however is called by Virt-A-Mate.
+For the sake of clarity, whenever I mention "eye model/mesh" I am talking about the models that came with the original character, not the G2 eyes unless
+explicitly stated otherwise.
 
-Keep in mind however that `OnEnable` will be called _before_ `Init`.
+If your eye model is symmetric, I suggest only using one eye for the Retargeting step and duplicating/mirroring the model once we get to setting up the Unity prefab.
+Otherwise, do whatever you want. At the end of the day, as long as you're in Unity and each eye has its own GameObject in the prefab, everything should be fine.
 
-## Validate locally
+## Getting your eyes into an AssetBundle
 
-You can run `dotnet build` in the plugin folder, and it'll show you any compilation errors. This is faster than going in VaM to do so! I recommend installing .NET 5 or more recent.
+### Retargeting Eyes Origin
 
-## Package var using GitHub Actions
+- Load your eye model into DAZ. It should be aligned properly and look normal, apart from some clipping with the G2 eyes.
+- When the eye is in place, export the G2 model __AND__ eye model as an FBX.
+- Import the FBX into blender with the `Armature > Automatic Bone Orientation` enabled. The bones will be messed up, but don't worry.
+- Select the armature and enable `Object Data Properties (green stickman tab icon) > Viewport display > In Front`
+- Enter pose mode (ctrl+tab with armature selected), select all bones (a) and reset all transforms (alt+g, alt+r, alt+s).
+- Select the Head bone base and `Snap Cursor to Selected` You should be able to search for this (and following commands) by pressing space.
+- Enter Object mode (ctrl+tab), select the eye model.
+- `Origin to 3D Cursor`
+- `Cursor to World Origin`
+- `Selection to Cursor`
+- At this point, the eye model should be somewhere at the character's feet.
+- If your eyes are together as one object, separate them now. We need them as two separate GameObjects in Unity later.
+- With only the eye models selected, export them as FBX with the `Limit to: Selected Objects` and `Transform > Apply Transform` options enabled, and we'll head over to Unity.
 
-If you use `GitHub`, you can push a tag with the naming convention `v0.0.0`, and it will automatically create a release draft. You can then edit it (e.g. add a description) and publish it.
+### Importing into Unity
 
-## Learning about Git
+ If you don't have an AssetBundle exporter project set up yet or you just want to make sure you're doing things right, 
+ follow [MacGruber's tutorial](https://hub.virtamate.com/resources/unity-assetbundles-for-vam-1-xx.167/) (NSFW, duh).
+ 
+- Once we're in Unity, we need to make sure some of the import settings are set properly for our mesh.
+  - Read/Write Enabled - __THIS IS IMPORTANT!__ If you don't enable this, the plugin won't be able to modify the UVs.
+  - AssetBundle - Choose a name for the file you're going to export. Note that we'll be appending the `.assetbundle` suffix to the end of whatever name you use here.
 
-There are tons of references out there, you might want to look at [GitHub Learning Lab](https://lab.github.com/). Learning Git is _really_ worth your time.
+- Import your eye texture(s) and set the AssetBundle in the import settings. You can try setting the Wrap Mode to "Clamp", but I haven't had any success with that setting making the journey to VAM.
+- Create a material for your eyes and - you guessed it - set its AssetBundle. The Standard shaders are probably the safest option, I'm not sure which shaders were stripped when VAM was built, but feel free to play around.
+Worst case is that you get a severe case of pink eye if the shader is missing. Fill in the material with your eye textures and change the options as you would in a regular Unity game.
+
+### Exporting as an AssetBundle
+
+- Let's make a prefab. Create a new Empty GameObject in the hierarchy and reset its transform. This will be our root GameObject. Feel free to call it something interesting.
+- Drag your eye meshes into the scene as children of the root GameObject, and reset their transforms too.
+  - If you only have one eye mesh at this point, duplicate it now and change its `Scale.x` to -1.
+- At this point, you should have a root GameObject that has two child GameObjects; one for each eye. The child GameObjects should have MeshFilter and MeshRenderer components.
+- Apply the material you made earlier to both these child GameObjects.
+- __THIS IS IMPORTANT:__ rename your child objects in the hierarchy so that they have the suffix `.l` and `.r` respectively.
+- Your hierarchy should look something like this:
+```
+root
+|   eye.l
+|   eye.r
+```
+note: the words "root" and "eye" in the example can be any names you like. The `.l` and `.r` suffix is mandatory.
+- Save the prefab by dragging the root GameObject from the hierarchy into the Project panel and give it an interesting name.
+- Set the prefab's AssetBundle.
+- We're ready to export the bundle from Unity! As a quick sanity check, let's go over all the important pieces we should have in our AssetBundle.
+  - Eye texture(s)
+  - Eye material
+  - Eye mesh(es)
+  - Prefab
+- Export your AssetPack now. If you're not sure how, I again refer you to MacGruber's tutorial.
+
+## Setting up the plugin
+
+- Add the plugin `VamEyeScroller.cs` to your Person atom and open the Custom UI.
+- Browse for your AssetBundle
+- Click "Active". If you set up the bundle correctly, the "Valid Setup" box should turn green and have a check mark.
+And we're done! The G2 eyes should be replaced with static, UV-scrolling eyes.
+
+## (Optional) Calibrating your eyes
+
+- If one of the eyes is tracking the opposite direction, select the "Mirror one eye" option.
+- If both of the eyes are tracking in the wrong direction, change the U or V values to negative.
+  - Changing U will invert along the horizontal axis
+  - Changing V will invert along the vertical axis
+- You can use the Texture Scale to change the iris size.
+
 
 ## License
 
