@@ -1,29 +1,25 @@
-
-
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using Battlehub.RTCommon;
+using Leap.Unity;
 using Request = MeshVR.AssetLoader.AssetBundleFromFileRequest;
 using MeshVR;
+using MVR.FileManagement;
+using MVR.FileManagementSecure;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
 namespace Pineapler.EyeScroller {
 /// <summary>
-/// VamEyeScroller Version 0.1.0
+/// VamEyeScroller Version 0.0.0
 /// By Pineapler
 /// Stylized eyes that don't give you nightmares
 /// Source: https://github.com/pineaplers/vam-eye-scroller
 /// </summary>
     public class VamEyeScroller : MVRScript {
-
-        // Format asset bundles as:
-        // ## IMPORTANT
-        //  eyes.prefab
-        //  |   eye.l
-        //  |   eye.r
 
         private static readonly string _fileExt = "assetbundle";
         private string _lastBrowseDir = @"Custom\Assets\";
@@ -39,22 +35,26 @@ namespace Pineapler.EyeScroller {
         private Vector2 _uvsPerRotation;
         private float _uniformTexScaleF;
 
-        private JSONStorableUrl _eyePresetUrl;
+        private JSONStorableUrl _eyeBundleUrl;
         private EyesObject _parsedEyes;
 
-        private GameObject _headObj;
-        private Transform _lLookReference;
-        private Transform _rLookReference;
         private DAZCharacter _character;
         private DAZCharacterSelector _selector;
         private SkinHandler _skinHandler;
+        private GameObject _headObj;
+        private Transform _lLookReference;
+        private Transform _rLookReference;
+
+        private bool _dirty = true;
+        private int _tryAgainAttempts;
+        private int _tryAgainLimit = 90 * 20;
 
         private UIDynamicToggle _validToggleVis;
         private UIDynamicTextField _eyeBundleInfo;
 
-        private Color _bgDisabled = new Color(0.7f, 0.7f, 0.7f, 1);
-        private Color _bgValid = new Color(0.4f, 0.7f, 0.4f, 1);
-        private Color _bgInvalid = new Color(0.7f, 0.4f, 0.4f, 1);
+        private readonly Color _bgDisabled = new Color(0.7f, 0.7f, 0.7f, 1);
+        private readonly Color _bgValid = new Color(0.4f, 0.7f, 0.4f, 1);
+        private readonly Color _bgInvalid = new Color(0.7f, 0.4f, 0.4f, 1);
 
 // ----------------------------------------------------------------------------------
         public override void Init() {
@@ -65,10 +65,8 @@ namespace Pineapler.EyeScroller {
                     return;
                 }
 
+                GetPersonObjects();
                 InitCustomUI();
-
-                ValidateSetup();
-
             }
             catch (Exception e) {
                 SuperController.LogError("EyeScroller: Failed to initialize. " + e);
@@ -77,45 +75,59 @@ namespace Pineapler.EyeScroller {
         }
 
 // ----------------------------------------------------------------------------------
-        private void InitCustomUI() {
-                _activeToggle = new JSONStorableBool("Active", false, OnSetActive);
-                _eyeMirror = new JSONStorableBool("Mirror one eye", true);
-                _uPerRotation = new JSONStorableFloat("U values per revolution", 1f, val => _uvsPerRotation = new Vector2(val, _vPerRotation.val), -2f, 2f, false);
-                _vPerRotation = new JSONStorableFloat("V values per revolution", 1f, val => _uvsPerRotation = new Vector2(_uPerRotation.val, val),-2f, 2f, false);
-                _uniformTexScale = new JSONStorableFloat("Texture scale", 1f, val => _uniformTexScaleF = val, 0.0001f, 10f);
-                _eyePresetUrl = new JSONStorableUrl("Eye Atom Preset", string.Empty);
+    private void InitCustomUI() {
+        _activeToggle = new JSONStorableBool("Active", false, OnSetActiveDel);
+        _eyeMirror = new JSONStorableBool("Mirror one eye", true);
+        _uPerRotation = new JSONStorableFloat("U values per revolution", 1f,
+            val => _uvsPerRotation = new Vector2(val, _vPerRotation.val), -2f, 2f, false);
+        _vPerRotation = new JSONStorableFloat("V values per revolution", 1f,
+            val => _uvsPerRotation = new Vector2(_uPerRotation.val, val), -2f, 2f, false);
+        _uniformTexScale = new JSONStorableFloat("Texture scale", 1f, val => _uniformTexScaleF = val, 0.0001f, 10f);
+        _eyeBundleUrl = new JSONStorableUrl("Eye AssetBundle", string.Empty, GetEyeAssetPath);
 
-                RegisterBool(_activeToggle);
-                RegisterBool(_eyeMirror);
-                RegisterFloat(_uPerRotation);
-                RegisterFloat(_vPerRotation);
-                RegisterFloat(_uniformTexScale);
-                RegisterUrl(_eyePresetUrl);
+        RegisterBool(_activeToggle);
+        RegisterBool(_eyeMirror);
+        RegisterFloat(_uPerRotation);
+        RegisterFloat(_vPerRotation);
+        RegisterFloat(_uniformTexScale);
+        RegisterUrl(_eyeBundleUrl);
 
-                // These get read very frequently, unwrap them from JSON to avoid passing around objects
-                _uvsPerRotation = new Vector2(_uPerRotation.val, _vPerRotation.val);
-                _uniformTexScaleF = _uniformTexScale.val;
+        // These get read very frequently, unwrap them from JSON to avoid passing around objects
+        _uvsPerRotation = new Vector2(_uPerRotation.val, _vPerRotation.val);
+        _uniformTexScaleF = _uniformTexScale.val;
 
-                // You can use Create* methods to add a control in the plugin's custom UI
-                CreateToggle(_activeToggle);
-                _validToggleVis = CreateToggle(new JSONStorableBool("Valid setup", false), true);
-                _validToggleVis.toggle.interactable = false;
+        CreateToggle(_activeToggle);
+        _validToggleVis = CreateToggle(new JSONStorableBool("Valid setup", false), true);
+        _validToggleVis.toggle.interactable = false;
 
-                CreateSpacer();
-                UIDynamicButton eyeLoader = CreateButton("Select Eye AssetBundle");
-                eyeLoader.button.onClick.AddListener(() => {
-                    SuperController.singleton.NormalizeMediaPath(_lastBrowseDir);
-                    SuperController.singleton.GetMediaPathDialog(GetEyeAssetPath, _fileExt);
-                });
-                _eyeBundleInfo = CreateTextField(new JSONStorableString("Selected AssetBundle", ""));
-                _eyeBundleInfo.height = 10f;
+        CreateSpacer();
+        UIDynamicButton eyeLoader = CreateButton("Select Eye AssetBundle");
+        eyeLoader.button.onClick.AddListener(() => {
+            // _eyeBundleUrl.FileBrowse();
+            SuperController.singleton.NormalizeMediaPath(_lastBrowseDir);
+            SuperController.singleton.GetMediaPathDialog(GetEyeAssetPath, _fileExt);
+        });
+        _eyeBundleInfo = CreateTextField(new JSONStorableString("Selected AssetBundle", ""));
+        _eyeBundleInfo.height = 10f;
 
-                CreateSpacer();
-                CreateToggle(_eyeMirror);
-                CreateSlider(_uPerRotation);
-                CreateSlider(_vPerRotation);
-                CreateSlider(_uniformTexScale);
+        CreateSpacer();
+        CreateToggle(_eyeMirror);
+        CreateSlider(_uPerRotation);
+        CreateSlider(_vPerRotation);
+        CreateSlider(_uniformTexScale);
 
+        UIDynamicButton printHierarchy = CreateButton("Print Bundle URL", true);
+        printHierarchy.button.onClick.AddListener(() => {
+            SuperController.LogMessage(_eyeBundleUrl.val);
+        });
+}
+
+// ----------------------------------------------------------------------------------
+        private void GetPersonObjects() {
+            _selector = containingAtom.GetComponentInChildren<DAZCharacterSelector>();
+            _character = _selector.selectedCharacter;
+            _skinHandler = new SkinHandler();
+            _skinHandler.Configure(_character.skin);
         }
 
 // ----------------------------------------------------------------------------------
@@ -127,14 +139,14 @@ namespace Pineapler.EyeScroller {
                     GameObject.Destroy(_parsedEyes.instance);
                 }
 
-                if (string.IsNullOrEmpty(_eyePresetUrl.val)) {
+                if (string.IsNullOrEmpty(_eyeBundleUrl.val)) {
                     _isValidSetup = false;
                     return;
                 }
 
                 // Display the currently selected file
-                _eyeBundleInfo.text = _eyePresetUrl.val.Substring(_eyePresetUrl.val.LastIndexOfAny(new char[] { '/', '\\' }) + 1);
                 LoadEyeAsset();
+                _eyeBundleInfo.text = _eyeBundleUrl.val.Substring(_eyeBundleUrl.val.LastIndexOfAny(new char[] { '/', '\\' }) + 1);
             }
             catch (Exception e) {
                 SuperController.LogError(e.Message);
@@ -147,17 +159,18 @@ namespace Pineapler.EyeScroller {
             if (string.IsNullOrEmpty(path)) {
                 return;
             }
-
             _lastBrowseDir = path.Substring(0, path.LastIndexOfAny(new char[] { '/', '\\' })) + @"\";
-            _eyePresetUrl.val = path;
+            _eyeBundleUrl.val = path;
             ValidateSetup();
         }
 
 // ----------------------------------------------------------------------------------
         private void LoadEyeAsset() {
             try {
+                string fullPath = _eyeBundleUrl.val;
+                SuperController.LogMessage(fullPath);
                 Request request = new AssetLoader.AssetBundleFromFileRequest
-                    { path = _eyePresetUrl.val, callback = OnEyeBundleLoaded };
+                    { path = fullPath, callback = OnEyeBundleLoaded };
                 AssetLoader.QueueLoadAssetBundleFromFile(request);
             }
             catch (Exception e) {
@@ -184,7 +197,7 @@ namespace Pineapler.EyeScroller {
                     return;
                 }
 
-                OnSetActive(_activeToggle);
+                OnSetActive(_activeToggle.val);
             }
             catch (Exception e) {
                 SuperController.LogError(e.Message);
@@ -193,9 +206,30 @@ namespace Pineapler.EyeScroller {
         }
 
 // ----------------------------------------------------------------------------------
-        private void OnSetActive(JSONStorableBool state) {
-            _parsedEyes?.instance?.SetActive(state.val);
+        private void OnDisable() {
+            OnSetActive(false);
+        }
+
+        private void OnEnable() {
+            OnSetActive(_activeToggle.val);
+        }
+
+// ----------------------------------------------------------------------------------
+        private void OnSetActiveDel(JSONStorableBool state) {
+            OnSetActive(state.val);
+        }
+
+        private void OnSetActive(bool state) {
+            state = state && _isValidSetup;
+
+            _parsedEyes?.instance?.SetActive(state);
             // TODO: Disable real eye materials from here
+            if (state) {
+                _skinHandler.BeforeRender();
+            }
+            else {
+                _skinHandler.AfterRender();
+            }
         }
 
 // ----------------------------------------------------------------------------------
@@ -257,6 +291,17 @@ namespace Pineapler.EyeScroller {
             mesh.uv = currentUVs;
         }
 
+// ----------------------------------------------------------------------------------
+        private void MakeDirty(string reason)
+        {
+            _dirty = true;
+            _tryAgainAttempts++;
+            if (_tryAgainAttempts > _tryAgainLimit) // Approximately 20 to 40 seconds
+            {
+                SuperController.LogError("Failed to apply ImprovedPoV. Reason: " + reason + ". Try reloading the plugin, or report the issue to @Acidbubbles.");
+                enabled = false;
+            }
+        }
 
 // ----------------------------------------------------------------------------------
         private void OnDestroy() {
@@ -433,6 +478,11 @@ namespace Pineapler.EyeScroller {
                     { "Custom/Subsurface/TransparentComputeBuff", null },
                     { "Custom/Subsurface/AlphaMaskComputeBuff", null },
                     { "Marmoset/Transparent/Simple Glass/Specular IBLComputeBuff", null },
+
+                    // These are throwing errors
+                    { "Custom/Discard", null },
+                    { "Custom/Subsurface/TransparentSeparateAlphaComputeBuff", null },
+                    { "Custom/Subsurface/TransparentGlossNMSeparateAlphaComputeBuff", null },
                 };
 
             private DAZSkinV2 _skin;

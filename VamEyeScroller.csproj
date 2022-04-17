@@ -72,6 +72,10 @@
     <Compile Include="VamEyeScroller.cs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="img" />
+  </ItemGroup>
+
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Target Name="GenerateTargetFrameworkMonikerAttribute" />
 
