@@ -52,9 +52,12 @@ Otherwise, do whatever you want. At the end of the day, as long as you're in Uni
 - Once we're in Unity, we need to make sure some of the import settings are set properly for our mesh.
   - Read/Write Enabled - __THIS IS IMPORTANT!__ If you don't enable this, the plugin won't be able to modify the UVs.
   - AssetBundle - Choose a name for the file you're going to export. Note that we'll be appending the `.assetbundle` suffix to the end of whatever name you use here.
-
-- Import your eye texture(s) and set the AssetBundle in the import settings. You can try setting the Wrap Mode to "Clamp", but I haven't had any success with that setting making the journey to VAM.
-- Create a material for your eyes and - you guessed it - set its AssetBundle. The Standard shaders are probably the safest option, I'm not sure which shaders were stripped when VAM was built, but feel free to play around.
+- Import your eye texture(s) and set the following import settings. 
+  - Wrap Mode "Clamp" - This will stop the texture from tiling across the eye if it gets too small or travels off the side too far.
+  - AssetBundle - same bundle as before.
+- Create a material for your eyes.
+  - Set the AssetBundle
+  - Use the standard shader for now, the plugin will transfer the textures to the Sclera VAM material.
 Worst case is that you get a severe case of pink eye if the shader is missing. Fill in the material with your eye textures and change the options as you would in a regular Unity game.
 
 ### Exporting as an AssetBundle
@@ -88,14 +91,15 @@ note: the words "root" and "eye" in the example can be any names you like. The `
 - Click "Active". If you set up the bundle correctly, the "Valid Setup" box should turn green and have a check mark.
 And we're done! The G2 eyes should be replaced with static, UV-scrolling eyes.
 
-## (Optional) Calibrating your eyes
+## Calibrating your eyes
 
-- If one of the eyes is tracking the opposite direction, select the "Mirror one eye" option.
-- If both of the eyes are tracking in the wrong direction, change the U or V values to negative.
-  - Changing U will invert along the horizontal axis
-  - Changing V will invert along the vertical axis
-- You can use the Texture Scale to change the iris size.
-
+Calibrating the eyes is easiest if you set the Person's `Auto Behaviours > Eye Control > Eyes Look At` to Player.
+- Tweak the Z Bone Offset to get the eyes seated in the sockets _just right_.
+- If the character isn't looking straight at you when your camera is directly in front, tweak the U and V "Iris Offset" values.
+- If one of the eyes is tracking the opposite direction, change the "Mirror one eye" option.
+- If both of the eyes are tracking in the wrong direction, change the U value to negative.
+- Move the camera around the edges of the character's field of view until they _just_ stop tracking. Change the U and V "Values Per Rotation" until the irises are pointing towards the camera.
+- Finally, if you want the character to track even further to the sides, have a play with some of the other options in `Auto Behaviours` to increase or decrease the eye angle limits.
 
 ## License
 

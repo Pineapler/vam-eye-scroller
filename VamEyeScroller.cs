@@ -1,16 +1,10 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text;
-using Battlehub.RTCommon;
-using Leap.Unity;
 using Request = MeshVR.AssetLoader.AssetBundleFromFileRequest;
 using MeshVR;
-using MVR.FileManagement;
-using MVR.FileManagementSecure;
 using UnityEngine;
-using Object = UnityEngine.Object;
 
 namespace Pineapler.EyeScroller {
 /// <summary>
@@ -28,11 +22,16 @@ namespace Pineapler.EyeScroller {
         private JSONStorableBool _activeToggle;
 
         private JSONStorableBool _eyeMirror;
+        private JSONStorableBool _delayOneFrame;
         private JSONStorableFloat _uPerRotation;
         private JSONStorableFloat _vPerRotation;
+        private JSONStorableFloat _uIrisOffset;
+        private JSONStorableFloat _vIrisOffset;
         private JSONStorableFloat _uniformTexScale;
+        private JSONStorableFloat _zBoneOffset;
 
         private Vector2 _uvsPerRotation;
+        private Vector2 _uvIrisOffset;
         private float _uniformTexScaleF;
 
         private JSONStorableUrl _eyeBundleUrl;
@@ -41,9 +40,10 @@ namespace Pineapler.EyeScroller {
         private DAZCharacter _character;
         private DAZCharacterSelector _selector;
         private SkinHandler _skinHandler;
-        private GameObject _headObj;
+        private Transform _headTransform;
         private Transform _lLookReference;
         private Transform _rLookReference;
+
 
         private bool _dirty = true;
         private int _tryAgainAttempts;
@@ -52,9 +52,14 @@ namespace Pineapler.EyeScroller {
         private UIDynamicToggle _validToggleVis;
         private UIDynamicTextField _eyeBundleInfo;
 
-        private readonly Color _bgDisabled = new Color(0.7f, 0.7f, 0.7f, 1);
-        private readonly Color _bgValid = new Color(0.4f, 0.7f, 0.4f, 1);
-        private readonly Color _bgInvalid = new Color(0.7f, 0.4f, 0.4f, 1);
+        private Vector3 _posLastFrame = Vector3.zero;
+        private Quaternion _rotLastFrame = Quaternion.identity;
+        private Vector3 _lossyScaleLastFrame = Vector3.one;
+
+        private readonly string HEAD_ADDR = "rescale2/PhysicsModel/Genesis2Female/hip/abdomen/abdomen2/chest/neck/head";
+        private readonly Color BG_DISABLED = new Color(0.7f, 0.7f, 0.7f, 1);
+        private readonly Color BG_VALID = new Color(0.4f, 0.7f, 0.4f, 1);
+        private readonly Color BG_INVALID = new Color(0.7f, 0.4f, 0.4f, 1);
 
 // ----------------------------------------------------------------------------------
         public override void Init() {
@@ -79,31 +84,44 @@ namespace Pineapler.EyeScroller {
         _activeToggle = new JSONStorableBool("Active", false, OnSetActiveDel);
         _eyeMirror = new JSONStorableBool("Mirror one eye", true);
         _uPerRotation = new JSONStorableFloat("U values per revolution", 1f,
-            val => _uvsPerRotation = new Vector2(val, _vPerRotation.val), -2f, 2f, false);
+            val => _uvsPerRotation = new Vector2(val, _vPerRotation.val), -10f, 10f, false);
         _vPerRotation = new JSONStorableFloat("V values per revolution", 1f,
-            val => _uvsPerRotation = new Vector2(_uPerRotation.val, val), -2f, 2f, false);
-        _uniformTexScale = new JSONStorableFloat("Texture scale", 1f, val => _uniformTexScaleF = val, 0.0001f, 10f);
+            val => _uvsPerRotation = new Vector2(_uPerRotation.val, val), -10f, 10f, false);
+        _uIrisOffset = new JSONStorableFloat("U Iris Offset", 0,
+            val => _uvIrisOffset = new Vector2(val, _vIrisOffset.val), -0.5f, 0.5f, false);
+        _vIrisOffset = new JSONStorableFloat("V Iris Offset", 0,
+            val => _uvIrisOffset = new Vector2(_uIrisOffset.val, val), -0.5f, 0.5f, false);
+        _uniformTexScale = new JSONStorableFloat("Texture scale", 1f, val => _uniformTexScaleF = val, 0.0001f, 3f, false);
+        _zBoneOffset = new JSONStorableFloat("Z Bone Offset", 0f, -0.1f, 0.1f, false);
+        _delayOneFrame = new JSONStorableBool("Delay Position One Frame", true);
         _eyeBundleUrl = new JSONStorableUrl("Eye AssetBundle", string.Empty, GetEyeAssetPath);
 
         RegisterBool(_activeToggle);
         RegisterBool(_eyeMirror);
+        RegisterBool(_delayOneFrame);
         RegisterFloat(_uPerRotation);
         RegisterFloat(_vPerRotation);
+        RegisterFloat(_uIrisOffset);
+        RegisterFloat(_vIrisOffset);
         RegisterFloat(_uniformTexScale);
         RegisterUrl(_eyeBundleUrl);
 
         // These get read very frequently, unwrap them from JSON to avoid passing around objects
         _uvsPerRotation = new Vector2(_uPerRotation.val, _vPerRotation.val);
+        _uvIrisOffset = new Vector2(_uIrisOffset.val, _vIrisOffset.val);
         _uniformTexScaleF = _uniformTexScale.val;
 
         CreateToggle(_activeToggle);
+
         _validToggleVis = CreateToggle(new JSONStorableBool("Valid setup", false), true);
         _validToggleVis.toggle.interactable = false;
 
-        CreateSpacer();
+        CreateSpacer(true);
+
         UIDynamicButton eyeLoader = CreateButton("Select Eye AssetBundle");
         eyeLoader.button.onClick.AddListener(() => {
             // _eyeBundleUrl.FileBrowse();
+            // TODO: replace this with package-navigable version
             SuperController.singleton.NormalizeMediaPath(_lastBrowseDir);
             SuperController.singleton.GetMediaPathDialog(GetEyeAssetPath, _fileExt);
         });
@@ -114,11 +132,22 @@ namespace Pineapler.EyeScroller {
         CreateToggle(_eyeMirror);
         CreateSlider(_uPerRotation);
         CreateSlider(_vPerRotation);
-        CreateSlider(_uniformTexScale);
+        CreateSpacer();
+        CreateSlider(_uIrisOffset);
+        CreateSlider(_vIrisOffset);
+        CreateSlider(_zBoneOffset, true).valueFormat = "F4";
+        CreateSlider(_uniformTexScale, true);
 
-        UIDynamicButton printHierarchy = CreateButton("Print Bundle URL", true);
-        printHierarchy.button.onClick.AddListener(() => {
+        // Debug buttons
+        CreateSpacer(true);
+        UIDynamicButton printBundle = CreateButton("Print Bundle URL", true);
+        printBundle.button.onClick.AddListener(() => {
             SuperController.LogMessage(_eyeBundleUrl.val);
+        });
+
+        UIDynamicButton printBoneStructure = CreateButton("Print delay", true);
+        printBoneStructure.button.onClick.AddListener(() => {
+            SuperController.LogMessage(_character.skin.delayDisplayOneFrame.ToString());
         });
 }
 
@@ -128,6 +157,22 @@ namespace Pineapler.EyeScroller {
             _character = _selector.selectedCharacter;
             _skinHandler = new SkinHandler();
             _skinHandler.Configure(_character.skin);
+            foreach (DAZBone bone in _character.skin.root.dazBones) {
+                switch (bone.name) {
+                    case "lEye":
+                        _lLookReference = bone.transform;
+                        break;
+                    case "rEye":
+                        _rLookReference = bone.transform;
+                        break;
+                    case "head":
+                        _headTransform = bone.transform;
+                        break;
+                }
+            }
+
+            // _headTransform = Utils.GetChildByHierarchy(containingAtom.transform, HEAD_ADDR);
+            // SuperController.LogMessage(Utils.TransformParentsToString(_headTransform));
         }
 
 // ----------------------------------------------------------------------------------
@@ -222,8 +267,10 @@ namespace Pineapler.EyeScroller {
         private void OnSetActive(bool state) {
             state = state && _isValidSetup;
 
+            // Enable/disable custom eyes
             _parsedEyes?.instance?.SetActive(state);
-            // TODO: Disable real eye materials from here
+
+            // Disable/enable original eyes
             if (state) {
                 _skinHandler.BeforeRender();
             }
@@ -237,19 +284,37 @@ namespace Pineapler.EyeScroller {
             try {
                 _validToggleVis.toggle.isOn = _isValidSetup;
                 if (!_activeToggle.val) {
-                    _validToggleVis.backgroundColor = _bgDisabled;
+                    _validToggleVis.backgroundColor = BG_DISABLED;
                     return;
                 }
                 if (!_isValidSetup) {
-                    _validToggleVis.backgroundColor = _bgInvalid;
+                    _validToggleVis.backgroundColor = BG_INVALID;
                     return;
                 }
-                _validToggleVis.backgroundColor = _bgValid;
+                _validToggleVis.backgroundColor = BG_VALID;
+
+                Transform instanceT = _parsedEyes.instance.transform;
+                if (_delayOneFrame.val) {
+                    instanceT.localPosition = _posLastFrame;
+                    instanceT.rotation = _rotLastFrame;
+                    instanceT.localScale = _lossyScaleLastFrame;
+
+                    _posLastFrame = _headTransform.TransformPoint(new Vector3(0, 0, _zBoneOffset.val));
+                    _rotLastFrame = _headTransform.rotation;
+                    _lossyScaleLastFrame = _headTransform.lossyScale;
+                }
+                else {
+                    instanceT.localPosition = _headTransform.TransformPoint(new Vector3(0, 0, _zBoneOffset.val));
+                    instanceT.rotation = _headTransform.rotation;
+                    instanceT.localScale = _headTransform.lossyScale;
+                }
+
 
                 ScrollUVs();
             }
             catch (Exception e){
                 SuperController.LogError("EyeScroller: " + e);
+                SuperController.LogMessage($"Objects exist? {_validToggleVis != null} {_parsedEyes != null} {_headTransform != null} {_zBoneOffset != null}");
                 _isValidSetup = false;
             }
         }
@@ -260,27 +325,26 @@ namespace Pineapler.EyeScroller {
 
         private readonly Vector2 POINT_FIVE = new Vector2(0.5f, 0.5f);
 
-        // TODO: Get head bone
-        // TODO: Get eye bones
-        // TODO: IMPORTANT: Replace null transforms in ScrollUV
         private void ScrollUVs() {
-            ScrollUV(_parsedEyes.lMesh, null, _parsedEyes.lOriginalUVs, _parsedEyes.lCurrentUVs, false);
-            ScrollUV(_parsedEyes.rMesh, null, _parsedEyes.rOriginalUVs, _parsedEyes.rCurrentUVs, _eyeMirror.val);
+            ScrollUV(_parsedEyes.lMesh, _lLookReference, _parsedEyes.lOriginalUVs, _parsedEyes.lCurrentUVs, false);
+            ScrollUV(_parsedEyes.rMesh, _rLookReference, _parsedEyes.rOriginalUVs, _parsedEyes.rCurrentUVs, _eyeMirror.val);
         }
 
         private void ScrollUV(Mesh mesh, Transform referenceRot, Vector2[] originalUVs, Vector2[] currentUVs, bool mirror) {
 
-            // Vector3 refObjRotation = referenceRot.localRotation.eulerAngles;
-            Vector3 refObjRotation = Vector3.zero;
+            float mirrorF = mirror ? -1f : 1f;
+            Vector3 refObjRotation = referenceRot.localRotation.eulerAngles;
+
             // Get angles in range [-180, 180]
             float horizontalRot = Mathf.Repeat(refObjRotation.y + 180f, 360f) - 180f;
             float verticalRot = Mathf.Repeat(refObjRotation.x + 180f, 360f) - 180f;
 
             // Scale rotation-to-UV offset
-            Vector2 uvOffset = new Vector2(horizontalRot, verticalRot) / 180f * _uvsPerRotation;
+            Vector2 uvOffset = new Vector2(horizontalRot * mirrorF, verticalRot) / 180f * _uvsPerRotation;
 
             for (int i = 0; i < currentUVs.Length; i++) {
                 Vector2 uv = originalUVs[i];
+                uv += _uvIrisOffset;
                 uv += uvOffset;
                 uv -= POINT_FIVE;
                 uv /= _uniformTexScaleF;
@@ -378,6 +442,7 @@ namespace Pineapler.EyeScroller {
 
     // ##############################################################################
     // ###  The following code has been repurposed from Acidbubbles' ImprovedPoV  ###
+    // ###  This is used for hiding the original eye materials ######################
     // ##############################################################################
 #region Acidbubbles
     public static class HandlerConfigurationResult
@@ -595,6 +660,52 @@ namespace Pineapler.EyeScroller {
             SuperController.LogError(errorString);
         }
 
+// ----------------------------------------------------------------------------------
+
+        /// <summary>
+        /// Gets the transform of a child specified with a relative address.
+        /// </summary>
+        /// <param name="root">The parent transform to search from.</param>
+        /// <param name="address">Forward slash-separated path to traverse children.</param>
+        /// <returns></returns>
+        public static Transform GetChildByHierarchy(Transform root, string address) {
+            return GetChildByHierarchy(root, address.Split('/'));
+        }
+
+        /// <summary>
+        /// Gets the transform of a child specified with a relative address.
+        /// </summary>
+        /// <param name="root">The parent transform to search from.</param>
+        /// <param name="address">Array of child names to traverse in order.</param>
+        /// <returns></returns>
+        public static Transform GetChildByHierarchy(Transform root, string[] address) {
+            string originalRootName = root.name;
+            foreach (string nextName in address) {
+                Transform prevRoot = root;
+                for (int i = 0; i < root.childCount; i++) {
+                    Transform child = root.GetChild(i);
+                    if (!child.name.Equals(nextName)) continue;
+                    root = child;
+                    break;
+                }
+
+                if (prevRoot == root) {
+                    throw new Exception($"Address {string.Join("/", address)} does not match the structure of GameObject {originalRootName}");
+                }
+            }
+            return root;
+        }
+
+// ----------------------------------------------------------------------------------
+        public static String TransformParentsToString(Transform child) {
+            string outStr = "/" + child.name;
+            while (child.parent != null) {
+                child = child.parent;
+                outStr = "/" + child.name + outStr;
+            }
+
+            return outStr;
+        }
     }
     #endregion
 }
