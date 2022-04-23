@@ -69,7 +69,7 @@
 
   <ItemGroup>
     <Compile Include="src\ImprovedPoV.cs" />
-    <Compile Include="VamEyeScroller.cs" />
+    <Compile Include="VamEyeScrollerOld.cs" />
   </ItemGroup>
 
   <ItemGroup>

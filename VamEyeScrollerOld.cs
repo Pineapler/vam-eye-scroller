@@ -4,9 +4,10 @@ using System.Linq;
 using System.Text;
 using Request = MeshVR.AssetLoader.AssetBundleFromFileRequest;
 using MeshVR;
+using MVR.FileManagementSecure;
 using UnityEngine;
 
-namespace Pineapler.EyeScroller {
+namespace Pineapler.EyeScrollerOld {
 /// <summary>
 /// VamEyeScroller Version 0.0.0
 /// By Pineapler
@@ -22,7 +23,7 @@ namespace Pineapler.EyeScroller {
         private JSONStorableBool _activeToggle;
 
         private JSONStorableBool _eyeMirror;
-        private JSONStorableBool _delayOneFrame;
+        private JSONStorableBool _delayOneFrame;    // don't know if this needs to be serialized
         private JSONStorableFloat _uPerRotation;
         private JSONStorableFloat _vPerRotation;
         private JSONStorableFloat _uIrisOffset;
@@ -44,10 +45,10 @@ namespace Pineapler.EyeScroller {
         private Transform _lLookReference;
         private Transform _rLookReference;
 
-
-        private bool _dirty = true;
+        private bool _characterValid;
         private int _tryAgainAttempts;
         private int _tryAgainLimit = 90 * 20;
+        private bool _errorLogged;
 
         private UIDynamicToggle _validToggleVis;
         private UIDynamicTextField _eyeBundleInfo;
@@ -56,7 +57,6 @@ namespace Pineapler.EyeScroller {
         private Quaternion _rotLastFrame = Quaternion.identity;
         private Vector3 _lossyScaleLastFrame = Vector3.one;
 
-        private readonly string HEAD_ADDR = "rescale2/PhysicsModel/Genesis2Female/hip/abdomen/abdomen2/chest/neck/head";
         private readonly Color BG_DISABLED = new Color(0.7f, 0.7f, 0.7f, 1);
         private readonly Color BG_VALID = new Color(0.4f, 0.7f, 0.4f, 1);
         private readonly Color BG_INVALID = new Color(0.7f, 0.4f, 0.4f, 1);
@@ -70,17 +70,17 @@ namespace Pineapler.EyeScroller {
                     return;
                 }
 
-                GetPersonObjects();
+                _selector = containingAtom.GetComponentInChildren<DAZCharacterSelector>();
                 InitCustomUI();
             }
             catch (Exception e) {
                 SuperController.LogError("EyeScroller: Failed to initialize. " + e);
-                _isValidSetup = false;
+                DestroyImmediate(this);
             }
         }
 
 // ----------------------------------------------------------------------------------
-    private void InitCustomUI() {
+        private void InitCustomUI() {
         _activeToggle = new JSONStorableBool("Active", false, OnSetActiveDel);
         _eyeMirror = new JSONStorableBool("Mirror one eye", true);
         _uPerRotation = new JSONStorableFloat("U values per revolution", 1f,
@@ -151,137 +151,19 @@ namespace Pineapler.EyeScroller {
         });
 }
 
-// ----------------------------------------------------------------------------------
-        private void GetPersonObjects() {
-            _selector = containingAtom.GetComponentInChildren<DAZCharacterSelector>();
-            _character = _selector.selectedCharacter;
-            _skinHandler = new SkinHandler();
-            _skinHandler.Configure(_character.skin);
-            foreach (DAZBone bone in _character.skin.root.dazBones) {
-                switch (bone.name) {
-                    case "lEye":
-                        _lLookReference = bone.transform;
-                        break;
-                    case "rEye":
-                        _rLookReference = bone.transform;
-                        break;
-                    case "head":
-                        _headTransform = bone.transform;
-                        break;
-                }
-            }
-
-            // _headTransform = Utils.GetChildByHierarchy(containingAtom.transform, HEAD_ADDR);
-            // SuperController.LogMessage(Utils.TransformParentsToString(_headTransform));
-        }
-
-// ----------------------------------------------------------------------------------
-        private void ValidateSetup() {
+         private void LateUpdate() {
             try {
-                _isValidSetup = true;
+                // Is character valid?
+                if (!CheckCharacterRefs()) {
 
-                if (_parsedEyes?.instance != null) {
-                    GameObject.Destroy(_parsedEyes.instance);
+                }
+                // Is eye valid?
+
+
+                if ((_character == null || !_characterValid) && _tryAgainAttempts < _tryAgainLimit) {
+                    if(!GetCharacterRefs()) return;
                 }
 
-                if (string.IsNullOrEmpty(_eyeBundleUrl.val)) {
-                    _isValidSetup = false;
-                    return;
-                }
-
-                // Display the currently selected file
-                LoadEyeAsset();
-                _eyeBundleInfo.text = _eyeBundleUrl.val.Substring(_eyeBundleUrl.val.LastIndexOfAny(new char[] { '/', '\\' }) + 1);
-            }
-            catch (Exception e) {
-                SuperController.LogError(e.Message);
-                _isValidSetup = false;
-            }
-        }
-
-// ----------------------------------------------------------------------------------
-        public void GetEyeAssetPath(string path) {
-            if (string.IsNullOrEmpty(path)) {
-                return;
-            }
-            _lastBrowseDir = path.Substring(0, path.LastIndexOfAny(new char[] { '/', '\\' })) + @"\";
-            _eyeBundleUrl.val = path;
-            ValidateSetup();
-        }
-
-// ----------------------------------------------------------------------------------
-        private void LoadEyeAsset() {
-            try {
-                string fullPath = _eyeBundleUrl.val;
-                SuperController.LogMessage(fullPath);
-                Request request = new AssetLoader.AssetBundleFromFileRequest
-                    { path = fullPath, callback = OnEyeBundleLoaded };
-                AssetLoader.QueueLoadAssetBundleFromFile(request);
-            }
-            catch (Exception e) {
-                SuperController.LogError(e.Message);
-                _isValidSetup = false;
-            }
-        }
-// ----------------------------------------------------------------------------------
-        private void OnEyeBundleLoaded(Request request) {
-            try {
-                string[] assetPaths = request.assetBundle.GetAllAssetNames();
-
-                string firstPrefabPath = assetPaths.FirstOrDefault(s => s.EndsWith(".prefab"));
-
-                if (firstPrefabPath == null) {
-                    Utils.PrintErrorUsage("No prefab was found in the specified AssetBundle.");
-                    _isValidSetup = false;
-                    return;
-                }
-
-                _parsedEyes = new EyesObject(request, firstPrefabPath);
-                if (!_parsedEyes.isValidRig) {
-                    _isValidSetup = false;
-                    return;
-                }
-
-                OnSetActive(_activeToggle.val);
-            }
-            catch (Exception e) {
-                SuperController.LogError(e.Message);
-                _isValidSetup = false;
-            }
-        }
-
-// ----------------------------------------------------------------------------------
-        private void OnDisable() {
-            OnSetActive(false);
-        }
-
-        private void OnEnable() {
-            OnSetActive(_activeToggle.val);
-        }
-
-// ----------------------------------------------------------------------------------
-        private void OnSetActiveDel(JSONStorableBool state) {
-            OnSetActive(state.val);
-        }
-
-        private void OnSetActive(bool state) {
-            state = state && _isValidSetup;
-
-            // Enable/disable custom eyes
-            _parsedEyes?.instance?.SetActive(state);
-
-            // Disable/enable original eyes
-            if (state) {
-                _skinHandler.BeforeRender();
-            }
-            else {
-                _skinHandler.AfterRender();
-            }
-        }
-
-// ----------------------------------------------------------------------------------
-        private void LateUpdate() {
-            try {
                 _validToggleVis.toggle.isOn = _isValidSetup;
                 if (!_activeToggle.val) {
                     _validToggleVis.backgroundColor = BG_DISABLED;
@@ -317,62 +199,200 @@ namespace Pineapler.EyeScroller {
                 SuperController.LogMessage($"Objects exist? {_validToggleVis != null} {_parsedEyes != null} {_headTransform != null} {_zBoneOffset != null}");
                 _isValidSetup = false;
             }
-        }
+         }
+
+// ----------------------------------------------------------------------------------
+         private bool CheckCharacterRefs() {
+             return _character != null &&
+                    _character.skin != null &&
+                    _lLookReference != null &&
+                    _rLookReference != null &&
+                    _headTransform != null &&
+                    _skinHandler != null &&
+                    _character == _selector.selectedCharacter;
+         }
+
+// ----------------------------------------------------------------------------------
+         private void WipeCharacterRefs() {
+             _lLookReference = null;
+             _rLookReference = null;
+             _headTransform = null;
+             _skinHandler?.Restore();
+             _skinHandler = null;
+             _character = null;
+         }
+
+// ----------------------------------------------------------------------------------
+         private bool GetCharacterRefs() {
+             try {
+                 _selector = containingAtom.GetComponentInChildren<DAZCharacterSelector>();
+                 _character = _selector.selectedCharacter;
+                 foreach (DAZBone bone in _character.skin.root.dazBones) {
+                     switch (bone.name) {
+                         case "lEye":
+                             _lLookReference = bone.transform;
+                             break;
+                         case "rEye":
+                             _rLookReference = bone.transform;
+                             break;
+                         case "head":
+                             _headTransform = bone.transform;
+                             break;
+                     }
+                 }
+
+                 _skinHandler = new SkinHandler();
+                 _skinHandler.Configure(_character.skin);
+
+                 if (CheckCharacterRefs()) {
+                     OnSetActive(_activeToggle.val);
+                     return true;
+                 }
+
+                 OnSetActive(false);
+                 WipeCharacterRefs();
+                 return false;
+             }
+             catch {
+                 OnSetActive(false);
+                 _tryAgainAttempts++;
+                 WipeCharacterRefs();
+                 return false;
+             }
+         }
+
+
+// ----------------------------------------------------------------------------------
+         public void GetEyeAssetPath(string path) {
+             if (string.IsNullOrEmpty(path)) {
+                 return;
+             }
+             _lastBrowseDir = path.Substring(0, path.LastIndexOfAny(new char[] { '/', '\\' })) + @"\";
+             _eyeBundleUrl.val = path;
+         }
+
+// ----------------------------------------------------------------------------------
+         private void LoadEyeAsset() {
+             try {
+                 string fullPath = _eyeBundleUrl.val;
+                 if (FileManagerSecure.FileExists(fullPath)) {
+                     Request request = new AssetLoader.AssetBundleFromFileRequest
+                         { path = fullPath, callback = OnEyeBundleLoaded };
+                     AssetLoader.QueueLoadAssetBundleFromFile(request);
+                 }
+                 else {
+                     SuperController.LogError("File not found: " + fullPath);
+                     OnSetActive(_activeToggle.val);
+                 }
+             }
+             catch (Exception e) {
+                 SuperController.LogError(e.Message);
+
+             }
+         }
+// ----------------------------------------------------------------------------------
+         private void OnEyeBundleLoaded(Request request) {
+             try {
+                 string[] assetPaths = request.assetBundle.GetAllAssetNames();
+
+                 string firstPrefabPath = assetPaths.FirstOrDefault(s => s.EndsWith(".prefab"));
+
+                 if (firstPrefabPath == null) {
+                     Utils.PrintErrorUsage("No prefab was found in the specified AssetBundle.");
+                     _isValidSetup = false;
+                     return;
+                 }
+
+                 _parsedEyes = new EyesObject(request, firstPrefabPath);
+                 if (!_parsedEyes.isValidRig) {
+                     _isValidSetup = false;
+                     return;
+                 }
+
+                 OnSetActive(_activeToggle.val);
+             }
+             catch (Exception e) {
+                 SuperController.LogError(e.Message);
+
+                 _isValidSetup = false;
+             }
+         }
+
+// ----------------------------------------------------------------------------------
+         private void OnDisable() {
+             OnSetActive(false);
+         }
+
+         private void OnEnable() {
+             OnSetActive(_activeToggle.val);
+         }
+
+// ----------------------------------------------------------------------------------
+         private void OnSetActiveDel(JSONStorableBool state) {
+             OnSetActive(state.val);
+         }
+
+         private void OnSetActive(bool state) {
+             state = state && _characterValid && _parsedEyes != null && _parsedEyes.isValidRig;
+
+             _parsedEyes?.instance?.SetActive(state);
+
+             if (_characterValid) {
+                 // Disable/enable original eyes
+                 if (state) {
+                     _skinHandler.BeforeRender();
+                 }
+                 else {
+                     _skinHandler.AfterRender();
+                 }
+             }
+         }
+
+// ----------------------------------------------------------------------------------
+
 
 
 
 // ----------------------------------------------------------------------------------
 
-        private readonly Vector2 POINT_FIVE = new Vector2(0.5f, 0.5f);
+         private readonly Vector2 POINT_FIVE = new Vector2(0.5f, 0.5f);
 
-        private void ScrollUVs() {
-            ScrollUV(_parsedEyes.lMesh, _lLookReference, _parsedEyes.lOriginalUVs, _parsedEyes.lCurrentUVs, false);
-            ScrollUV(_parsedEyes.rMesh, _rLookReference, _parsedEyes.rOriginalUVs, _parsedEyes.rCurrentUVs, _eyeMirror.val);
-        }
+         private void ScrollUVs() {
+             ScrollUV(_parsedEyes.lMesh, _lLookReference, _parsedEyes.lOriginalUVs, _parsedEyes.lCurrentUVs, false);
+             ScrollUV(_parsedEyes.rMesh, _rLookReference, _parsedEyes.rOriginalUVs, _parsedEyes.rCurrentUVs, _eyeMirror.val);
+         }
 
-        private void ScrollUV(Mesh mesh, Transform referenceRot, Vector2[] originalUVs, Vector2[] currentUVs, bool mirror) {
+         private void ScrollUV(Mesh mesh, Transform referenceRot, Vector2[] originalUVs, Vector2[] currentUVs, bool mirror) {
 
-            float mirrorF = mirror ? -1f : 1f;
-            Vector3 refObjRotation = referenceRot.localRotation.eulerAngles;
+             float mirrorF = mirror ? -1f : 1f;
+             Vector3 refObjRotation = referenceRot.localRotation.eulerAngles;
 
-            // Get angles in range [-180, 180]
-            float horizontalRot = Mathf.Repeat(refObjRotation.y + 180f, 360f) - 180f;
-            float verticalRot = Mathf.Repeat(refObjRotation.x + 180f, 360f) - 180f;
+             // Get angles in range [-180, 180]
+             float horizontalRot = Mathf.Repeat(refObjRotation.y + 180f, 360f) - 180f;
+             float verticalRot = Mathf.Repeat(refObjRotation.x + 180f, 360f) - 180f;
 
-            // Scale rotation-to-UV offset
-            Vector2 uvOffset = new Vector2(horizontalRot * mirrorF, verticalRot) / 180f * _uvsPerRotation;
+             // Scale rotation-to-UV offset
+             Vector2 uvOffset = new Vector2(horizontalRot * mirrorF, verticalRot) / 180f * _uvsPerRotation;
 
-            for (int i = 0; i < currentUVs.Length; i++) {
-                Vector2 uv = originalUVs[i];
-                uv += _uvIrisOffset;
-                uv += uvOffset;
-                uv -= POINT_FIVE;
-                uv /= _uniformTexScaleF;
-                uv += POINT_FIVE;
-                currentUVs[i] = uv;
-            }
+             for (int i = 0; i < currentUVs.Length; i++) {
+                 Vector2 uv = originalUVs[i];
+                 uv += _uvIrisOffset;
+                 uv += uvOffset;
+                 uv -= POINT_FIVE;
+                 uv /= _uniformTexScaleF;
+                 uv += POINT_FIVE;
+                 currentUVs[i] = uv;
+             }
 
-            mesh.uv = currentUVs;
-        }
+             mesh.uv = currentUVs;
+         }
 
-// ----------------------------------------------------------------------------------
-        private void MakeDirty(string reason)
-        {
-            _dirty = true;
-            _tryAgainAttempts++;
-            if (_tryAgainAttempts > _tryAgainLimit) // Approximately 20 to 40 seconds
-            {
-                SuperController.LogError("Failed to apply ImprovedPoV. Reason: " + reason + ". Try reloading the plugin, or report the issue to @Acidbubbles.");
-                enabled = false;
-            }
-        }
 
 // ----------------------------------------------------------------------------------
-        private void OnDestroy() {
-            if (_parsedEyes != null) {
-                DestroyImmediate(_parsedEyes.instance);
-            }
-        }
+         private void OnDestroy() {
+             OnSetActive(false);
+             _parsedEyes?.Destroy();
+         }
     }
 
 
@@ -401,7 +421,6 @@ namespace Pineapler.EyeScroller {
                                                $"Found object hierarchy: \n\n{Utils.ObjectHierarchyToString(root)}");
                 return;
             }
-            // TODO: set parent bone here
             instance = GameObject.Instantiate(root.gameObject);
             if (!PopulateData(instance.transform)) {
                 Utils.PrintErrorUsage($"Error deconstructing the eyes prefab after instantiating.\n" +
@@ -432,10 +451,14 @@ namespace Pineapler.EyeScroller {
             return lMesh != null && rMesh != null && lMesh.isReadable && rMesh.isReadable;
         }
 
-        ~EyesObject(){
+        public void Destroy() {
             if (instance != null) {
-                GameObject.DestroyImmediate(instance);
+                GameObject.Destroy(instance);
             }
+        }
+
+        ~EyesObject(){
+            Destroy();
         }
     }
 
