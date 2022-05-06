@@ -103,4 +103,4 @@ Calibrating the eyes is easiest if you set the Person's `Auto Behaviours > Eye C
 
 ## License
 
-[MIT](LICENSE.md)
+[GNU GPLv3](LICENSE.md)
