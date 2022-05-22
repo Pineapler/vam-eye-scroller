@@ -2,7 +2,7 @@ This is a work-in-progress that I'm doing whenever I have downtime. If you have 
 
 ### TODO:
 
-- Make sure custom objects are loaded/unloaded properly
+- Make sure custom objects are loaded/unloaded whenever they need to be
 - Serialize assetbundles when in packages
 - Replace custom object material with one already on the Person (sclera?)
 
