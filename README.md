@@ -1,3 +1,11 @@
+This is a work-in-progress that I'm doing whenever I have downtime. If you have experience writing VAM plugins, please feel free to help and submit a pull request.
+
+### TODO:
+
+- Make sure custom objects are loaded/unloaded properly
+- Serialize assetbundles when in packages
+- Replace custom object material with one already on the Person (sclera?)
+
 # VamEyeScroller
 
 The DAZ3D characters used by Virt-A-Mate have spherical eyes. The models are designed to rotate to look at things, and there are several material options to fine-tune the look of every part of the eye. However, in a lot of stylized models the character's eyes are too big and flat for this to work properly, and if you try it you will have nightmares for weeks. Artists use a technique called UV scrolling where the textures are scrolled along the eye model surface, giving the illusion of the character looking in a different direction.  
