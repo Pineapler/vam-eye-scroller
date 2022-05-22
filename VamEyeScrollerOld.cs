@@ -8,6 +8,11 @@ using MVR.FileManagementSecure;
 using UnityEngine;
 
 namespace Pineapler.EyeScrollerOld {
+// ===================================== READ ME ============================================
+// This is from my first attempt at writing the plugin, and is kept in the repo for reference.
+// If you are contributing, please don't modify this file.
+// ===========================================================================================
+    
 /// <summary>
 /// VamEyeScroller Version 0.0.0
 /// By Pineapler
