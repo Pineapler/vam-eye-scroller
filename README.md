@@ -1,10 +1,4 @@
-This is a work-in-progress that I'm doing whenever I have downtime. If you have experience writing VAM plugins, please feel free to help and submit a pull request.
-
-### TODO:
-
-- Make sure custom objects are loaded/unloaded whenever they need to be
-- Serialize assetbundles when in packages
-- Replace custom object material with one already on the Person (sclera?)
+This is a work-in-progress that I'm doing whenever I have downtime. If you have experience writing VAM plugins, please feel free to look through Issues and submit a pull request.
 
 # VamEyeScroller
 
